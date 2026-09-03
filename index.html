@@ -1533,8 +1533,9 @@
     <div class="modal-box chunky">
       <h3>📱 Enviar desenho por WhatsApp</h3>
       <p class="hint">
-        1. Vamos baixar seu desenho no aparelho.<br>
-        2. Depois vamos abrir o WhatsApp aqui mesmo, nesta tela, para você (ou um adulto) enviar a imagem baixada.
+        Digite o número de WhatsApp que vai <strong>receber</strong> o desenho (o seu ou o de um adulto).
+        Se o seu aparelho permitir, a imagem já vai anexada; se não, ela será baixada e é só anexar na conversa que vai
+        abrir.
       </p>
       <label for="whatsapp-phone-input">Número de WhatsApp para receber (com DDD)</label>
       <input type="tel" id="whatsapp-phone-input" placeholder="Ex: 45 99999-9999" inputmode="numeric">
@@ -1765,7 +1766,7 @@
         safeRemove(storageKey(currentTheme));
       }
 
-      function downloadCurrentTheme() {
+      function getCurrentThemeBlob(callback) {
         if (!currentTheme) return;
         var svg = getSvgEl(currentTheme);
         var clone = svg.cloneNode(true);
@@ -1801,15 +1802,25 @@
           URL.revokeObjectURL(url);
 
           canvas.toBlob(function (blob) {
-            var link = document.createElement('a');
-            link.download = 'meu-desenho-' + currentTheme + '.png';
-            link.href = URL.createObjectURL(blob);
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
+            callback(blob, 'meu-desenho-' + currentTheme + '.png');
           }, 'image/png');
         };
         img.src = url;
+      }
+
+      function downloadBlob(blob, filename) {
+        var link = document.createElement('a');
+        link.download = filename;
+        link.href = URL.createObjectURL(blob);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      }
+
+      function downloadCurrentTheme() {
+        getCurrentThemeBlob(function (blob, filename) {
+          downloadBlob(blob, filename);
+        });
       }
 
       // ================= FREE DRAW MODE =================
@@ -2013,15 +2024,16 @@
         img.src = last;
       }
 
-      function fdDownload() {
+      function getFreeDrawBlob(callback) {
         freedrawCanvas.toBlob(function (blob) {
-          var link = document.createElement('a');
-          link.download = 'meu-desenho-livre.png';
-          link.href = URL.createObjectURL(blob);
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
+          callback(blob, 'meu-desenho-livre.png');
         }, 'image/png');
+      }
+
+      function fdDownload() {
+        getFreeDrawBlob(function (blob, filename) {
+          downloadBlob(blob, filename);
+        });
       }
 
       buildPaletteInto(fdCrayonsWrap, fdSelectedSwatch, freeDrawColor, function (c) {
@@ -2094,11 +2106,23 @@
       document.getElementById('btn-download-fd').addEventListener('click', fdDownload);
 
       // ================= WHATSAPP SEND =================
-      // Static offline file, so there is no server here to auto-send images.
-      // This opens a WhatsApp chat (via wa.me) to the project's own number,
-      // with a ready-made message, after downloading the drawing locally so
-      // it can be attached and forwarded to the number the child typed in.
-      var OWNER_WHATSAPP = '5545999708131';
+      // The computer running this app is expected to be logged into
+      // WhatsApp Web/Desktop with its own number. This feature opens a chat
+      // FROM that logged-in number TO the number the child/parent types in,
+      // so the drawing can be sent to them.
+      //
+      // Attaching the image automatically:
+      // - wa.me links only support pre-filling TEXT, never a file — that's a
+      //   restriction of WhatsApp itself, not something a website can bypass.
+      // - Where the browser supports the Web Share API with files (most
+      //   modern mobile browsers, and some desktop ones), we use it: it opens
+      //   the device's native share sheet with the image already attached,
+      //   and the person picks WhatsApp from there.
+      // - Where that isn't supported, we fall back to downloading the image
+      //   and navigating to the WhatsApp chat with the message pre-filled;
+      //   whoever is at that computer just attaches the image that was
+      //   just downloaded (it's the most recent file in Downloads) and hits
+      //   send.
       var whatsappModal = document.getElementById('whatsapp-modal');
       var whatsappInput = document.getElementById('whatsapp-phone-input');
       var whatsappContext = 'game'; // 'game' | 'freedraw'
@@ -2120,32 +2144,38 @@
           window.alert('Digite um número de WhatsApp válido, com DDD (ex: 45999998888).');
           return;
         }
+        // Assume Brazil (+55) unless the person already typed a country code.
+        var destNumber = digits.length > 11 ? digits : '55' + digits;
 
         var themeLabel = whatsappContext === 'game' ? getThemeName(currentTheme) : 'Desenho Livre';
-        var msg = 'Olá! 🎨 Um desenho do "Colorir e Divertir" (' + themeLabel + ') acabou de ser baixado ' +
-          'e precisa ser encaminhado para o WhatsApp +55' + digits + '. Segue em anexo assim que possível. Obrigado!';
-        var url = 'https://wa.me/' + OWNER_WHATSAPP + '?text=' + encodeURIComponent(msg);
+        var msg = 'Aqui está o desenho "' + themeLabel + '" feito no Colorir e Divertir! 🎨';
+        var waUrl = 'https://wa.me/' + destNumber + '?text=' + encodeURIComponent(msg);
 
-        if (whatsappContext === 'game') {
-          downloadCurrentTheme();
-        } else {
-          fdDownload();
-        }
+        var getBlob = whatsappContext === 'game' ? getCurrentThemeBlob : getFreeDrawBlob;
 
         closeWhatsappModal();
 
-        // NOTE: we deliberately do NOT use window.open() here. Opening a new
-        // tab/window via script is treated as a "pop-up" by browsers, and
-        // several mobile browsers (and some hosting/preview environments)
-        // block it outright even when the user has allowed pop-ups in their
-        // settings — with no reliable way to detect or work around that from
-        // our side. Navigating the CURRENT tab, on the other hand, is a
-        // normal page navigation, not a pop-up, so it can't be blocked.
-        // We wait briefly first so the download above has time to actually
-        // start before we leave the page.
-        window.setTimeout(function () {
-          window.location.href = url;
-        }, 600);
+        getBlob(function (blob, filename) {
+          var canTryNativeShare = !!(navigator.canShare && window.File);
+          if (canTryNativeShare) {
+            try {
+              var file = new File([blob], filename, { type: 'image/png' });
+              if (navigator.canShare({ files: [file] })) {
+                navigator.share({ files: [file], text: msg })['catch'](function () {
+                  // person cancelled the share sheet, or it failed silently — nothing else to do
+                });
+                return;
+              }
+            } catch (e) { /* fall through to the download+wa.me fallback below */ }
+          }
+
+          // Fallback for browsers/devices without native file sharing:
+          // download the image, then navigate this tab to the WhatsApp chat.
+          downloadBlob(blob, filename);
+          window.setTimeout(function () {
+            window.location.href = waUrl;
+          }, 600);
+        });
       }
 
       document.getElementById('btn-whatsapp').addEventListener('click', function () {
