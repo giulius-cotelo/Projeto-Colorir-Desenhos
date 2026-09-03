@@ -1534,7 +1534,7 @@
       <h3>📱 Enviar desenho por WhatsApp</h3>
       <p class="hint">
         1. Vamos baixar seu desenho no aparelho.<br>
-        2. Depois abriremos o WhatsApp para você (ou um adulto) enviar a imagem baixada.
+        2. Depois vamos abrir o WhatsApp aqui mesmo, nesta tela, para você (ou um adulto) enviar a imagem baixada.
       </p>
       <label for="whatsapp-phone-input">Número de WhatsApp para receber (com DDD)</label>
       <input type="tel" id="whatsapp-phone-input" placeholder="Ex: 45 99999-9999" inputmode="numeric">
@@ -2126,27 +2126,26 @@
           'e precisa ser encaminhado para o WhatsApp +55' + digits + '. Segue em anexo assim que possível. Obrigado!';
         var url = 'https://wa.me/' + OWNER_WHATSAPP + '?text=' + encodeURIComponent(msg);
 
-        // IMPORTANT: window.open() must be the very first thing that happens
-        // in response to the click, or many browsers (especially in real
-        // HTTPS deployments) will silently block it as a pop-up. Doing the
-        // download first — even though it's just kicking off async work —
-        // is enough to make some browsers treat this as no longer being a
-        // direct user gesture, so we open the WhatsApp tab before anything else.
-        var waWindow = window.open(url, '_blank', 'noopener');
-
         if (whatsappContext === 'game') {
           downloadCurrentTheme();
         } else {
           fdDownload();
         }
 
-        if (!waWindow) {
-          window.alert('Não consegui abrir o WhatsApp automaticamente — seu navegador deve ter bloqueado a ' +
-            'janela. Procure um aviso de "pop-up bloqueado" (geralmente perto da barra de endereço), permita ' +
-            'para este site e tente enviar de novo.');
-        }
-
         closeWhatsappModal();
+
+        // NOTE: we deliberately do NOT use window.open() here. Opening a new
+        // tab/window via script is treated as a "pop-up" by browsers, and
+        // several mobile browsers (and some hosting/preview environments)
+        // block it outright even when the user has allowed pop-ups in their
+        // settings — with no reliable way to detect or work around that from
+        // our side. Navigating the CURRENT tab, on the other hand, is a
+        // normal page navigation, not a pop-up, so it can't be blocked.
+        // We wait briefly first so the download above has time to actually
+        // start before we leave the page.
+        window.setTimeout(function () {
+          window.location.href = url;
+        }, 600);
       }
 
       document.getElementById('btn-whatsapp').addEventListener('click', function () {
