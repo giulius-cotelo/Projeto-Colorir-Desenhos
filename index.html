@@ -1082,6 +1082,7 @@
           <button class="tool-btn" data-tool="pen">✏️<span>Lápis</span></button>
           <button class="tool-btn selected" data-tool="bucket">🪣<span>Balde</span></button>
           <button class="tool-btn" data-tool="eraser">🧽<span>Borracha</span></button>
+          <button class="tool-btn" data-tool="magic">🌈<span>Mágico</span></button>
         </div>
 
         <h3 class="tool-title">🖍 Cores</h3>
@@ -1128,6 +1129,7 @@
           <button class="tool-btn selected" data-tool="pen">✏️<span>Lápis</span></button>
           <button class="tool-btn" data-tool="bucket">🪣<span>Balde</span></button>
           <button class="tool-btn" data-tool="eraser">🧽<span>Borracha</span></button>
+          <button class="tool-btn" data-tool="magic">🌈<span>Mágico</span></button>
         </div>
 
         <h3 class="tool-title">🖍 Cores</h3>
@@ -1225,12 +1227,36 @@
 
       var tcColor = COLORS[0];
       var tcBrushSize = 10;
-      var tcTool = 'bucket'; // 'pen' | 'bucket' | 'eraser'
+      var tcTool = 'bucket'; // 'pen' | 'bucket' | 'eraser' | 'magic'
       var tcDrawing = false;
       var tcLastX = 0, tcLastY = 0;
+      var tcMagicDist = 0;
       var tcUndoStack = [];
       var TC_MAX_UNDO = 15;
       var TC_FILL_TOLERANCE = 60;
+
+      // Rainbow helper for the "Pincel Mágico" tool: turns a hue (0-360)
+      // into a hex color, so a single stroke can cycle through the whole
+      // rainbow as it's drawn instead of staying one flat color.
+      function hueToHex(h) {
+        h = ((h % 360) + 360) % 360;
+        var s = 0.85, l = 0.58;
+        var c = (1 - Math.abs(2 * l - 1)) * s;
+        var x = c * (1 - Math.abs((h / 60) % 2 - 1));
+        var m = l - c / 2;
+        var r, g, b;
+        if (h < 60) { r = c; g = x; b = 0; }
+        else if (h < 120) { r = x; g = c; b = 0; }
+        else if (h < 180) { r = 0; g = c; b = x; }
+        else if (h < 240) { r = 0; g = x; b = c; }
+        else if (h < 300) { r = x; g = 0; b = c; }
+        else { r = c; g = 0; b = x; }
+        function toHex(v) {
+          var n = Math.round((v + m) * 255);
+          return (n < 16 ? '0' : '') + n.toString(16);
+        }
+        return '#' + toHex(r) + toHex(g) + toHex(b);
+      }
 
       // ---- safe helpers: work even where SVGElement.classList or
       // Array.prototype.find are missing/partial (older or corporate browsers) ----
@@ -1489,17 +1515,24 @@
       }
 
       function tcStrokeTo(x, y) {
+        var color = tcColor;
+        if (tcTool === 'eraser') {
+          color = '#FFFFFF';
+        } else if (tcTool === 'magic') {
+          tcMagicDist += Math.hypot(x - tcLastX, y - tcLastY);
+          color = hueToHex(tcMagicDist * 0.9);
+        }
         tcCtx.lineJoin = 'round';
         tcCtx.lineCap = 'round';
         tcCtx.lineWidth = tcBrushSize;
-        tcCtx.strokeStyle = tcTool === 'eraser' ? '#FFFFFF' : tcColor;
+        tcCtx.strokeStyle = color;
         tcCtx.beginPath();
         tcCtx.moveTo(tcLastX, tcLastY);
         tcCtx.lineTo(x, y);
         tcCtx.stroke();
         tcCtx.beginPath();
         tcCtx.arc(x, y, tcBrushSize / 2, 0, Math.PI * 2);
-        tcCtx.fillStyle = tcTool === 'eraser' ? '#FFFFFF' : tcColor;
+        tcCtx.fillStyle = color;
         tcCtx.fill();
         tcLastX = x; tcLastY = y;
       }
@@ -1534,6 +1567,7 @@
         tcPushUndo();
         tcLastX = p.x; tcLastY = p.y;
         tcDrawing = true;
+        if (tcTool === 'magic') { tcMagicDist = 0; }
         tcStrokeTo(p.x, p.y);
       }
       function tcPointerMove(e) {
@@ -1625,9 +1659,10 @@
 
       var freeDrawColor = '#2D2D2D';
       var freeDrawBrushSize = 10;
-      var freeDrawTool = 'pen'; // 'pen' | 'bucket' | 'eraser'
+      var freeDrawTool = 'pen'; // 'pen' | 'bucket' | 'eraser' | 'magic'
       var fdDrawing = false;
       var fdLastX = 0, fdLastY = 0;
+      var fdMagicDist = 0;
       var fdUndoStack = [];
       var FD_STORAGE_KEY = 'colorir-freedraw-canvas';
       var FD_MAX_UNDO = 15;
@@ -1674,10 +1709,17 @@
       }
 
       function fdStrokeTo(x, y) {
+        var color = freeDrawColor;
+        if (freeDrawTool === 'eraser') {
+          color = '#FFFFFF';
+        } else if (freeDrawTool === 'magic') {
+          fdMagicDist += Math.hypot(x - fdLastX, y - fdLastY);
+          color = hueToHex(fdMagicDist * 0.9);
+        }
         fdCtx.lineJoin = 'round';
         fdCtx.lineCap = 'round';
         fdCtx.lineWidth = freeDrawBrushSize;
-        fdCtx.strokeStyle = freeDrawTool === 'eraser' ? '#FFFFFF' : freeDrawColor;
+        fdCtx.strokeStyle = color;
         fdCtx.beginPath();
         fdCtx.moveTo(fdLastX, fdLastY);
         fdCtx.lineTo(x, y);
@@ -1685,7 +1727,7 @@
         // draw a dot too, so single taps/clicks still show a mark
         fdCtx.beginPath();
         fdCtx.arc(x, y, freeDrawBrushSize / 2, 0, Math.PI * 2);
-        fdCtx.fillStyle = freeDrawTool === 'eraser' ? '#FFFFFF' : freeDrawColor;
+        fdCtx.fillStyle = color;
         fdCtx.fill();
         fdLastX = x; fdLastY = y;
       }
@@ -1773,6 +1815,7 @@
         fdPushUndo();
         fdLastX = p.x; fdLastY = p.y;
         fdDrawing = true;
+        if (freeDrawTool === 'magic') { fdMagicDist = 0; }
         fdStrokeTo(p.x, p.y);
       }
       function fdPointerMove(e) {
