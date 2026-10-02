@@ -1989,21 +1989,12 @@
         closeWhatsappModal();
 
         getBlob(function (blob, filename) {
-          var canTryNativeShare = !!(navigator.canShare && window.File);
-          if (canTryNativeShare) {
-            try {
-              var file = new File([blob], filename, { type: 'image/png' });
-              if (navigator.canShare({ files: [file] })) {
-                navigator.share({ files: [file], text: msg })['catch'](function () {
-                  // person cancelled the share sheet, or it failed silently — nothing else to do
-                });
-                return;
-              }
-            } catch (e) { /* fall through to the download+wa.me fallback below */ }
-          }
-
-          // Fallback for browsers/devices without native file sharing:
-          // download the image, then navigate this tab to the WhatsApp chat.
+          // Always: download the image, then navigate this tab straight to
+          // the WhatsApp chat for the typed contact. We deliberately don't
+          // use the native OS/browser share sheet (navigator.share) here —
+          // on Windows it pops up the generic "Share" panel (Nearby Sharing,
+          // Paint, Outlook, etc.) instead of going to WhatsApp, which is
+          // confusing since the person already typed the destination number.
           downloadBlob(blob, filename);
           window.setTimeout(function () {
             window.location.href = waUrl;
