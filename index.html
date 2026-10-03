@@ -1964,7 +1964,12 @@
         whatsappContext = context;
         whatsappInput.value = '';
         removeClass(whatsappModal, 'hidden');
-        setTimeout(function () { whatsappInput.focus(); }, 50);
+        // Deliberately NOT auto-focusing the field here: Windows' touch
+        // keyboard only pops up for a focus that comes from a genuine tap
+        // on the field, not from a script calling .focus(). Auto-focusing
+        // would mark the field as already focused before the child ever
+        // touches it, which can stop the on-screen keyboard from showing
+        // when they do tap it.
       }
 
       function closeWhatsappModal() {
