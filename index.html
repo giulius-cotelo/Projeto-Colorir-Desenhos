@@ -1066,7 +1066,6 @@
         <button id="btn-undo">↩ Desfazer</button>
         <button id="btn-clear" class="danger">🧹 Limpar</button>
         <button id="btn-download" class="primary">⬇ Baixar</button>
-        <button id="btn-whatsapp" class="whatsapp-btn">📱 Enviar</button>
       </div>
     </div>
 
@@ -1113,7 +1112,6 @@
         <button id="btn-undo-fd">↩ Desfazer</button>
         <button id="btn-clear-fd" class="danger">🧹 Limpar</button>
         <button id="btn-download-fd" class="primary">⬇ Baixar</button>
-        <button id="btn-whatsapp-fd" class="whatsapp-btn">📱 Enviar</button>
       </div>
     </div>
 
@@ -1152,19 +1150,20 @@
   </section>
 
   <!-- ===================== WHATSAPP SEND MODAL ===================== -->
-  <div id="whatsapp-modal" class="modal-overlay hidden">
+  <div id="download-info-modal" class="modal-overlay hidden">
     <div class="modal-box chunky">
-      <h3>📱 Enviar desenho por WhatsApp</h3>
+      <h3>⬇ Baixar desenho</h3>
       <p class="hint">
-        Digite o número de WhatsApp que vai <strong>receber</strong> o desenho (o seu ou o de um adulto).
-        Se o seu aparelho permitir, a imagem já vai anexada; se não, ela será baixada e é só anexar na conversa que vai
-        abrir.
+        Coloque seu nome e um telefone com DDD (o seu ou o de um adulto). A gente guarda isso junto com o
+        desenho para te enviar ele mais tarde!
       </p>
-      <label for="whatsapp-phone-input">Número de WhatsApp para receber (com DDD)</label>
-      <input type="tel" id="whatsapp-phone-input" placeholder="Ex: 45 99999-9999" inputmode="numeric">
+      <label for="download-name-input">Seu nome</label>
+      <input type="text" id="download-name-input" placeholder="Ex: Maria">
+      <label for="download-phone-input">Telefone com DDD</label>
+      <input type="tel" id="download-phone-input" placeholder="Ex: 45 99999-9999" inputmode="numeric">
       <div class="modal-actions">
-        <button id="btn-whatsapp-cancel">Cancelar</button>
-        <button id="btn-whatsapp-confirm" class="whatsapp-btn">Enviar</button>
+        <button id="btn-download-info-cancel">Cancelar</button>
+        <button id="btn-download-info-confirm" class="primary">⬇ Baixar</button>
       </div>
     </div>
   </div>
@@ -1930,15 +1929,13 @@
       });
       document.getElementById('btn-undo').addEventListener('click', tcUndo);
       document.getElementById('btn-clear').addEventListener('click', clearCurrentTheme);
-      document.getElementById('btn-download').addEventListener('click', downloadCurrentTheme);
 
       document.getElementById('card-freedraw').addEventListener('click', openFreeDraw);
       document.getElementById('btn-back-fd').addEventListener('click', backFromFreeDraw);
       document.getElementById('btn-clear-fd').addEventListener('click', fdClear);
       document.getElementById('btn-undo-fd').addEventListener('click', fdUndo);
-      document.getElementById('btn-download-fd').addEventListener('click', fdDownload);
 
-      // ================= WHATSAPP SEND =================
+      // ================= DOWNLOAD (collects name + phone first) =================
       // The computer running this app is expected to be logged into
       // WhatsApp Web/Desktop with its own number. This feature opens a chat
       // FROM that logged-in number TO the number the child/parent types in,
@@ -1956,70 +1953,73 @@
       //   whoever is at that computer just attaches the image that was
       //   just downloaded (it's the most recent file in Downloads) and hits
       //   send.
-      var whatsappModal = document.getElementById('whatsapp-modal');
-      var whatsappInput = document.getElementById('whatsapp-phone-input');
-      var whatsappContext = 'game'; // 'game' | 'freedraw'
+      var downloadInfoModal = document.getElementById('download-info-modal');
+      var downloadNameInput = document.getElementById('download-name-input');
+      var downloadPhoneInput = document.getElementById('download-phone-input');
+      var downloadContext = 'game'; // 'game' | 'freedraw'
 
-      function openWhatsappModal(context) {
-        whatsappContext = context;
-        whatsappInput.value = '';
-        removeClass(whatsappModal, 'hidden');
-        // Deliberately NOT auto-focusing the field here: Windows' touch
-        // keyboard only pops up for a focus that comes from a genuine tap
-        // on the field, not from a script calling .focus(). Auto-focusing
-        // would mark the field as already focused before the child ever
-        // touches it, which can stop the on-screen keyboard from showing
-        // when they do tap it.
+      function openDownloadInfoModal(context) {
+        downloadContext = context;
+        downloadNameInput.value = '';
+        downloadPhoneInput.value = '';
+        removeClass(downloadInfoModal, 'hidden');
+        // Deliberately NOT auto-focusing a field here: Windows' touch
+        // keyboard only pops up for a focus that comes from a genuine tap,
+        // not from a script calling .focus(). Auto-focusing would mark a
+        // field as already focused before the child ever touches it, which
+        // can stop the on-screen keyboard from showing when they do tap it.
       }
 
-      function closeWhatsappModal() {
-        addClass(whatsappModal, 'hidden');
+      function closeDownloadInfoModal() {
+        addClass(downloadInfoModal, 'hidden');
       }
 
-      function confirmWhatsappSend() {
-        var digits = whatsappInput.value.replace(/\D/g, '');
-        if (digits.length < 8) {
-          window.alert('Digite um número de WhatsApp válido, com DDD (ex: 45999998888).');
+      // Turns a typed name into something safe to put in a filename —
+      // strips accents/punctuation so it works on any filesystem.
+      function sanitizeForFilename(str) {
+        var noAccents = str.normalize ? str.normalize('NFD').replace(/[\u0300-\u036f]/g, '') : str;
+        return noAccents.replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-+|-+$/g, '').toLowerCase();
+      }
+
+      function confirmDownloadInfo() {
+        var name = downloadNameInput.value.trim();
+        var digits = downloadPhoneInput.value.replace(/\D/g, '');
+        if (!name) {
+          window.alert('Digite o nome.');
           return;
         }
-        // Assume Brazil (+55) unless the person already typed a country code.
-        var destNumber = digits.length > 11 ? digits : '55' + digits;
+        if (digits.length < 8) {
+          window.alert('Digite um telefone válido, com DDD (ex: 45999998888).');
+          return;
+        }
 
-        var themeLabel = whatsappContext === 'game' ? getThemeName(currentTheme) : 'Desenho Livre';
-        var msg = 'Aqui está o desenho "' + themeLabel + '" feito no Colorir e Divertir! 🎨';
-        var waUrl = 'https://wa.me/' + destNumber + '?text=' + encodeURIComponent(msg);
+        var getBlob = downloadContext === 'game' ? getCurrentThemeBlob : getFreeDrawBlob;
 
-        var getBlob = whatsappContext === 'game' ? getCurrentThemeBlob : getFreeDrawBlob;
-
-        closeWhatsappModal();
+        closeDownloadInfoModal();
 
         getBlob(function (blob, filename) {
-          // Always: download the image, then navigate this tab straight to
-          // the WhatsApp chat for the typed contact. We deliberately don't
-          // use the native OS/browser share sheet (navigator.share) here —
-          // on Windows it pops up the generic "Share" panel (Nearby Sharing,
-          // Paint, Outlook, etc.) instead of going to WhatsApp, which is
-          // confusing since the person already typed the destination number.
-          downloadBlob(blob, filename);
-          window.setTimeout(function () {
-            window.location.href = waUrl;
-          }, 600);
+          var safeName = sanitizeForFilename(name) || 'crianca';
+          var taggedFilename = safeName + '-' + digits + '-' + filename;
+          downloadBlob(blob, taggedFilename);
         });
       }
 
-      document.getElementById('btn-whatsapp').addEventListener('click', function () {
-        openWhatsappModal('game');
+      document.getElementById('btn-download').addEventListener('click', function () {
+        openDownloadInfoModal('game');
       });
-      document.getElementById('btn-whatsapp-fd').addEventListener('click', function () {
-        openWhatsappModal('freedraw');
+      document.getElementById('btn-download-fd').addEventListener('click', function () {
+        openDownloadInfoModal('freedraw');
       });
-      document.getElementById('btn-whatsapp-cancel').addEventListener('click', closeWhatsappModal);
-      document.getElementById('btn-whatsapp-confirm').addEventListener('click', confirmWhatsappSend);
-      whatsappModal.addEventListener('click', function (e) {
-        if (e.target === whatsappModal) { closeWhatsappModal(); }
+      document.getElementById('btn-download-info-cancel').addEventListener('click', closeDownloadInfoModal);
+      document.getElementById('btn-download-info-confirm').addEventListener('click', confirmDownloadInfo);
+      downloadInfoModal.addEventListener('click', function (e) {
+        if (e.target === downloadInfoModal) { closeDownloadInfoModal(); }
       });
-      whatsappInput.addEventListener('keydown', function (e) {
-        if (e.key === 'Enter') { confirmWhatsappSend(); }
+      downloadNameInput.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') { downloadPhoneInput.focus(); }
+      });
+      downloadPhoneInput.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') { confirmDownloadInfo(); }
       });
 
       window.addEventListener('error', function (e) {
